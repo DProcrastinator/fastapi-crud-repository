@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from typing import Generic, Type, TypeVar, Optional , Dict ,Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import DeclarativeMeta , selectinload
+from sqlalchemy.orm import DeclarativeMeta , selectinload , subqueryload , joinedload
 from fastapi_pagination import Params, Page
 from sqlalchemy.sql.expression import or_
 from sqlalchemy import asc, desc
@@ -31,14 +31,30 @@ class BaseRepository(Generic[ModelType, SchemaType]):
         query = select(self.model).filter_by(id=record_id)
         if load_relations:
             for relation in load_relations:
-                query = query.options(selectinload(getattr(self.model, relation)))
-        result = await self.db.execute(query)
-        return result.scalar_one_or_none()
+                if '.' in relation:
+                    parts = relation.split('.')
+                    current_model = self.model
+                    option = None
+                    for part in parts:
+                        attr = getattr(current_model, part)
+                        current_model = attr.property.mapper.class_
+                        option = joinedload(attr) if option is None else option.joinedload(attr)
+                    query = query.options(option)
+                else:
+                    query = query.options(selectinload(getattr(self.model, relation)))
 
-    async def get_all(self) -> list[ModelType]:
+        result = await self.db.execute(query)
+        return result.unique().scalar_one_or_none()
+
+    async def get_all(self,load_relations: list[str] = None) -> list[ModelType]:
         """Get all records."""
-        query = await self.db.execute(select(self.model))
-        return query.scalars().all()
+        query = select(self.model)
+        if load_relations:
+            for relation in load_relations:
+                query = query.options(selectinload(getattr(self.model, relation)))
+
+        result = await self.db.execute(query)
+        return result.scalars().all()
 
     async def update(self, record_id: int, schema: SchemaType) -> Optional[ModelType]:
         """Update a record."""
@@ -100,13 +116,3 @@ class BaseRepository(Generic[ModelType, SchemaType]):
 
 
         return await paginate(self.db , query, params)
-
-
-
-
-
-
-
-
-
-
