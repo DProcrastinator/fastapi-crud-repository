@@ -60,33 +60,32 @@ class UserSchema(BaseModel):
         from_attributes = True
 ```
  
-### Instantiate the repository:
 
 ```python
-from fastapi import Depends
+from fastapi import Depends , APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 from your_project.database import get_db  # Your database session dependency
 from your_project.repositories import BaseRepository
 from your_project.models import User, UserSchema
-
-# Define a repository for the User model
-user_repository = BaseRepository[User, UserSchema](User, Depends(get_db))
-```
-
-### Use the repository in your FastAPI endpoints:
-
-```python
 from fastapi import APIRouter
 
 router = APIRouter()
 
 @router.post("/users/", response_model=UserSchema)
-async def create_user(user: UserSchema, user_repository: BaseRepository[User, UserSchema] = Depends(user_repository)):
-    return await user_repository.create(user)
+async def create_user(
+    user: UserSchema, 
+    db: AsyncSession = Depends(get_db)
+):
+    user_repo = BaseRepository[User, UserSchema](User, db)
+    return await user_repo.create(user)
 
 @router.get("/users/{user_id}", response_model=UserSchema)
-async def get_user(user_id: int, user_repository: BaseRepository[User, UserSchema] = Depends(user_repository)):
-    return await user_repository.get(user_id)
+async def get_user(
+    user_id: int, 
+    db: AsyncSession = Depends(get_db)
+):
+    user_repo = BaseRepository[User, UserSchema](User, db)
+    return await user_repo.get(user_id)
 
 ```
 
